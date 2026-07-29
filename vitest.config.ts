@@ -21,8 +21,19 @@ export default defineConfig({
 
       // `json-summary` is REQUIRED, not cosmetic: scripts/coverage-to-markdown.ts reads
       // coverage/coverage-summary.json to build COVERAGE.md. Dropping it breaks `npm run coverage`
-      // and the coverage-main.yml workflow. `html` backs `npm run coverage:open`.
-      reporter: ['text', 'html', 'json-summary'],
+      // and the coverage-main.yml workflow.
+      //
+      // The rest are each for one audience: `text` is the per-file table during a run,
+      // `text-summary` the compact totals line at the end (the number you actually read),
+      // `html` backs `npm run coverage:open`, and `lcov` feeds editor gutter extensions — VS Code's
+      // Coverage Gutters and friends read coverage/lcov.info, which turns coverage from a report
+      // you go look at into an annotation on the line you are editing.
+      reporter: ['text', 'text-summary', 'html', 'json-summary', 'lcov'],
+
+      // Stated explicitly rather than left to the default, because it is a CONTRACT, not a
+      // preference: scripts/coverage-to-markdown.ts and .github/workflows/coverage-main.yml both
+      // hardcode `coverage/`. Moving this silently breaks both.
+      reportsDirectory: './coverage',
 
       // `include` measures every matching source file, NOT just the ones a test happened to import.
       // That distinction is the whole point: a module with zero tests must appear in the report at
@@ -31,7 +42,27 @@ export default defineConfig({
       // a type error here — setting `include` is now sufficient. Verified by adding an untested
       // src/ file and watching the floor fail.)
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/types.ts'],
+
+      // What is deliberately NOT measured. Every entry needs a reason — an exclude is the easiest
+      // way to fake a coverage number, so the bar is "this file cannot meaningfully be unit-tested",
+      // never "this file is inconvenient to test".
+      //
+      //   *.test.ts   the tests themselves.
+      //   types.ts    type-only modules; they erase at runtime, so there is nothing to execute.
+      //   *.d.ts      declarations, same reason.
+      //   *.io.ts     THE IMPERATIVE SHELL — see below. Ships as a convention, not a loophole.
+      //
+      // `*.io.ts` marks side-effecting boundary glue: the process bootstrap, an HTTP handler that
+      // only wires request → pure function → response, a database call, a console/fs write. The
+      // rule that makes the exclusion honest is that such a file contains **no branching and no
+      // computation** — every decision is pushed down into a pure module that IS covered. If you
+      // find yourself wanting an `if` in an `.io.ts`, that condition belongs in a tested function.
+      //
+      // Without an escape valve like this, an 85% floor pushes adopters toward one of two worse
+      // outcomes: lowering the floor, or writing fig-leaf tests that assert a mock was called. This
+      // gives the boundary somewhere legitimate to live. Verify shells by running the real thing —
+      // see .claude/skills/test-quality/ on why "it was mocked" is not evidence.
+      exclude: ['src/**/*.test.ts', 'src/**/types.ts', 'src/**/*.d.ts', 'src/**/*.io.ts'],
 
       thresholds: {
         lines: COVERAGE_FLOOR_PERCENT,

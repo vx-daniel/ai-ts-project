@@ -102,6 +102,18 @@ theatre hides: a suite can post a high line number while leaving most decision p
 `coverage.include` measures every source file, not only the ones a test imported — without it, a
 module with zero tests is simply absent from the report and the percentage looks healthy.
 
+**`*.io.ts` is the escape valve that keeps the floor honest.** A hard 85% floor pushes you toward
+one of two bad outcomes when you hit genuine boundary glue — a process bootstrap, an HTTP handler
+that only wires request → function → response, a database write. Either you lower the floor, or you
+write fig-leaf tests asserting a mock was called. So name such a file `*.io.ts` and it is excluded
+from the metric, on one condition: **it must contain no branching and no computation.** Every
+decision belongs in a pure module that *is* covered. If you want an `if` inside an `.io.ts`, that
+condition belongs in a tested function. Verify shells by running the real thing, not by mocking.
+
+Coverage also emits `lcov.info`, which editor extensions (VS Code's Coverage Gutters and similar)
+read to annotate uncovered lines in the gutter as you edit — coverage you notice while writing,
+rather than a report you remember to open.
+
 **Agent rules are conventions with teeth.** [.claude/rules/](.claude/rules/) covers naming,
 TypeScript patterns, Zod usage, options objects, discipline, and the broken-windows ratchet. Some
 are mechanically gated by Biome; the rest are review-enforced, and each file says which it is — so a
@@ -357,7 +369,7 @@ secrets by env-var name.
 
 <!-- COVERAGE-START -->
 
-_Coverage at `c86a721` (2026-07-29T22:09:38.350Z) — see [COVERAGE.md](./COVERAGE.md)._
+_Coverage at `15a533d` (2026-07-29T22:15:36.088Z) — see [COVERAGE.md](./COVERAGE.md)._
 
 | Metric | % | Covered/Total |
 |---|---|---|

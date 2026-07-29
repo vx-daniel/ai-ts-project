@@ -134,3 +134,8 @@ The rules in [`.claude/rules/`](.claude/rules/) are the detail; the short versio
 - **Zod at trust boundaries**, with the type *inferred* from the schema — never hand-written beside it.
 - **No magic values**, no abandonment markers (`TODO`/`FIXME`/`HACK`), no test weakening, no type
   suppression in tests.
+- **`*.io.ts` = imperative shell.** Side-effecting boundary glue (process bootstrap, request wiring,
+  database/console/fs writes) with **no branching and no computation** — every decision pushed into
+  a pure, covered module. Files matching it are excluded from the coverage metric
+  ([`vitest.config.ts`](vitest.config.ts)). This is a convention, not a loophole: do not rename a
+  file to `.io.ts` to dodge the floor. If it branches, it belongs in a tested function.
