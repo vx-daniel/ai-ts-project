@@ -9,6 +9,31 @@ Agent-facing detail lives in [CLAUDE.md](CLAUDE.md). Two opt-in guides live in [
 
 ## Quick start
 
+**To start a new project, generate it — don't copy this repo by hand.**
+
+```bash
+npm install
+node --import tsx scripts/create-project.ts ../my-service
+```
+
+Options: `--name <name>`, `--package-manager npm|bun`, `--layout single|monorepo`,
+`--package <name>` (first workspace package).
+
+```bash
+node --import tsx scripts/create-project.ts ../my-service  --package-manager bun
+node --import tsx scripts/create-project.ts ../my-platform --layout monorepo --package core
+```
+
+The generator copies this tree, renames the package, writes a **project-shaped** README and
+CLAUDE.md (no blueprint framing left to mislead an agent), applies the package manager and layout
+you chose, and omits its own tooling from the output. All four combinations are verified to pass
+`check:all` on generation — see [Verified combinations](#verified-combinations).
+
+Prefer the generator over copy-and-edit: it makes the choices once, up front, rather than leaving
+you to undo defaults, and it performs the identity steps that are otherwise most often skipped.
+
+**To work on the blueprint itself:**
+
 ```bash
 npm install        # also wires the pre-commit hook via the `prepare` script
 npm run check:all  # the gate: Biome → tsc --noEmit → Vitest
@@ -17,10 +42,25 @@ npm run check:all  # the gate: Biome → tsc --noEmit → Vitest
 Both should pass on a clean clone. If they don't, that's a bug in the blueprint — fix it here rather
 than working around it downstream.
 
+### Verified combinations
+
+Each is generated and its gate run, rather than assumed:
+
+| `--package-manager` | `--layout` | Gate | Coverage |
+|---|---|---|---|
+| npm | single | ✅ | ✅ 43 tests, 100% lines |
+| bun | single | ✅ | ✅ |
+| npm | monorepo | ✅ | ✅ |
+| bun | monorepo | ✅ | ✅ |
+
+For the monorepo variants the alias (`@/*`), the tsconfig `include`, and the coverage globs are all
+rewritten to point through `packages/`, and verified to resolve — not merely to pass vacuously.
+
 ## What you get
 
 | Piece | File | What it does |
 |---|---|---|
+| **Generator** | [scripts/create-project.ts](scripts/create-project.ts) | Produces a new project: name, package manager, layout. The primary adoption path. |
 | The gate | [scripts/gate.ts](scripts/gate.ts) | One ordered check list. Pre-commit hook and CI both call it, so "green" means one thing everywhere. |
 | Lint + format | [biome.json](biome.json) | Biome `recommended` plus stricter overrides (no nested ternaries, no `any`, no `@ts-ignore`, numeric separators). |
 | Naming gate | [.biome/naming.grit](.biome/naming.grit) | GritQL plugin flagging abbreviations and single-character names. Allowlist ships empty. |
@@ -81,6 +121,10 @@ are elsewhere (step 8 below).
 
 ## Adopting the blueprint
 
+**Steps 1–4 and 8–12 are done for you by `scripts/create-project.ts`** (see
+[Quick start](#quick-start)). This list is the manual equivalent — use it if you copied the repo by
+hand, or as a review checklist after generating.
+
 Work top to bottom: **1–4** are mechanical, **5–7** wire it to your code, **8–12** are decisions you
 should make consciously rather than inherit. **Run `npm run check:all` after each step** — it should
 never go red, and if it does you know exactly which step did it.
@@ -129,7 +173,8 @@ never go red, and if it does you know exactly which step did it.
   leaving two conventions live.
 - [ ] **11. Consider the package manager.** npm is the default and the committed lockfile.
   [docs/bun.md](docs/bun.md) has a measured compatibility matrix if you want Bun — most of it works
-  unchanged, with coverage the one real gap.
+  unchanged, with coverage the one real gap. Already adopted and want to switch later?
+  `node --import tsx scripts/migrate-to-bun.ts` (dry-run by default).
 - [ ] **12. Consider the repo shape.** Single package is the default;
   [docs/monorepo.md](docs/monorepo.md) covers what carries over and what changes (mainly path
   aliases and tsconfig layout).
@@ -312,7 +357,7 @@ secrets by env-var name.
 
 <!-- COVERAGE-START -->
 
-_Coverage at `eca8f6d` (2026-07-29T21:59:09.920Z) — see [COVERAGE.md](./COVERAGE.md)._
+_Coverage at `c86a721` (2026-07-29T22:09:38.350Z) — see [COVERAGE.md](./COVERAGE.md)._
 
 | Metric | % | Covered/Total |
 |---|---|---|

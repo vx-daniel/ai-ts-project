@@ -8,9 +8,21 @@ first day correct — one gate, one set of conventions, and agent rules that are
 A CLAUDE.md that still describes the blueprint is a stale file — rewrite it to describe the actual
 project. See [README.md](README.md) § "Adopting the blueprint" for the full checklist.
 
+**New projects are GENERATED, not copied**:
+`node --import tsx scripts/create-project.ts <target> [--package-manager npm|bun] [--layout single|monorepo]`.
+It renames the package, writes project-shaped docs, applies the chosen package manager and layout,
+and omits its own tooling from the output. All four combinations are verified to pass `check:all` on
+generation. If you are asked to "set up a new project from the blueprint", run that — do not
+hand-copy the tree.
+
 Two opt-in guides live in [`docs/`](docs/), both measured rather than inferred:
 [`bun.md`](docs/bun.md) (what works under Bun, and the one thing that doesn't) and
 [`monorepo.md`](docs/monorepo.md) (what carries over to workspaces, and what changes).
+
+**Adoption tooling — `scripts/create-project.ts`, `scripts/migrate-to-bun.ts`, `scripts/lib/` — is
+blueprint-only.** It is excluded from generated projects and must not be treated as project code.
+The Bun transforms live in `scripts/lib/bun-migration.ts` and are shared by the generator and the
+migrator so the two cannot drift.
 
 ## What's here
 

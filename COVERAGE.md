@@ -1,6 +1,6 @@
 # Test Coverage
 
-_Generated 2026-07-29T21:59:09.775Z at `eca8f6d` — do not edit by hand; run `npm run coverage`._
+_Generated 2026-07-29T22:09:38.207Z at `c86a721` — do not edit by hand; run `npm run coverage`._
 
 ## Totals
 

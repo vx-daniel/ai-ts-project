@@ -45,13 +45,28 @@ offers only two coverage reporters:
 
 This gets you Bun's install and startup speed while keeping the coverage pipeline intact.
 
+**Both paths are scripted — you should not need to make these edits by hand.**
+
+*Starting a new project:*
+
 ```bash
-rm -rf node_modules package-lock.json
-bun install
-bun run check:all      # or: bun scripts/gate.ts
+node --import tsx scripts/create-project.ts ../my-service --package-manager bun
 ```
 
-Then adjust:
+*Converting an existing project:*
+
+```bash
+node --import tsx scripts/migrate-to-bun.ts            # preview (default)
+node --import tsx scripts/migrate-to-bun.ts --write    # apply
+rm -rf node_modules && bun install
+bun run check:all
+```
+
+The migrator is dry-run by default and refuses to write to a dirty git tree, so `git checkout .`
+is always a way back. Its transforms live in `scripts/lib/bun-migration.ts`, shared with the
+generator so the two cannot drift apart.
+
+The edits either path performs, for reference:
 
 1. **`.gitignore`** — invert the lockfile rule. Commit `bun.lock`; ignore `package-lock.json`.
    Committing two lockfiles for one `package.json` is the failure to avoid: they resolve

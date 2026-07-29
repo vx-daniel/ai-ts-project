@@ -1,31 +1,31 @@
 /**
- * One-shot migration: npm + tsx  ->  Bun.
+ * Convert an EXISTING npm + tsx project to Bun, in place.
  *
- * Every step this performs is mechanical, which is why it can be a script at all. It rewires the
- * package.json scripts, drops tsx (Bun runs TypeScript natively), flips the committed lockfile,
- * updates the pre-commit hook, and swaps the CI workflows to setup-bun. What it does NOT do is
- * change the test runner: Vitest stays, because Bun's runner emits only text/lcov coverage and the
- * COVERAGE.md pipeline needs Vitest's json-summary. See docs/bun.md for the measurements.
+ * If you are starting a new project, use `scripts/create-project.ts --package-manager bun` instead —
+ * generating with the right package manager beats generating with npm and then undoing it. This
+ * script exists for the other case: a project already adopted from the blueprint that wants to
+ * switch later.
  *
  *   node --import tsx scripts/migrate-to-bun.ts            # preview (default)
- *   node --import tsx scripts/migrate-to-bun.ts --write     # apply
+ *   node --import tsx scripts/migrate-to-bun.ts --write    # apply
  *
  * DRY-RUN BY DEFAULT, and it refuses to write to a dirty git tree. Both exist for the same reason:
- * a migration you cannot `git checkout .` out of is a migration you cannot safely try. Pass
- * --allow-dirty only if you have another way back.
+ * a migration you cannot `git checkout .` out of is one you cannot safely try. Pass --allow-dirty
+ * only if you have another way back.
  *
- * Delete this script once the migration has landed — it is adoption tooling, not part of the
- * project it produces.
+ * It does NOT change the test runner. Vitest stays, because Bun's runner emits only text/lcov
+ * coverage while the COVERAGE.md pipeline needs Vitest's json-summary — see docs/bun.md for the
+ * measurements behind that call.
+ *
+ * The transforms live in lib/bun-migration.ts, shared with the generator so the two cannot drift.
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { BUN_MIGRATION_DELETIONS, BUN_MIGRATION_STEPS } from './lib/bun-migration.js'
 
 const REPO_ROOT = process.cwd()
 const EXIT_FAILURE = 1
-
-const BUN_MINIMUM_VERSION = '>=1.3'
-const BUN_SETUP_ACTION = 'oven-sh/setup-bun@v2'
 
 const GREEN = '\x1b[32m'
 const YELLOW = '\x1b[33m'
@@ -33,125 +33,6 @@ const RED = '\x1b[31m'
 const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const RESET = '\x1b[0m'
-
-/** One planned change to one file. `transform` must be a pure function of the file's content. */
-interface PlannedEdit {
-  readonly relativePath: string
-  readonly reason: string
-  readonly transform: (content: string) => string
-}
-
-/** Files the migration deletes outright, with the reason shown in the preview. */
-interface PlannedDeletion {
-  readonly relativePath: string
-  readonly reason: string
-}
-
-/**
- * Rewrite the package.json scripts, dependencies, and engines.
- *
- * Operates on the parsed object rather than by regex because these are structural edits — removing
- * a dependency key, replacing a runner prefix in every script value. A regex over the raw JSON
- * would also match the same strings inside comments or unrelated fields.
- */
-function migratePackageJson(content: string): string {
-  const packageJson = JSON.parse(content) as {
-    scripts?: Record<string, string>
-    devDependencies?: Record<string, string>
-    engines?: Record<string, string>
-  }
-
-  if (packageJson.scripts !== undefined) {
-    for (const [scriptName, command] of Object.entries(packageJson.scripts)) {
-      // `node --import tsx <file>` becomes plain `bun <file>` — Bun needs no loader for TypeScript.
-      packageJson.scripts[scriptName] = command.replaceAll('node --import tsx ', 'bun ')
-    }
-  }
-
-  // tsx exists solely to give Node TypeScript execution and tsconfig path resolution. Bun has both
-  // natively, so keeping tsx would leave an unused dependency — exactly what this blueprint removes.
-  if (packageJson.devDependencies !== undefined) {
-    delete packageJson.devDependencies.tsx
-  }
-
-  // `engines.node` no longer describes the requirement once the toolchain is Bun.
-  packageJson.engines = { bun: BUN_MINIMUM_VERSION }
-
-  return `${JSON.stringify(packageJson, null, 2)}\n`
-}
-
-/** Flip the lockfile block: commit bun's, ignore npm's. Exactly one lockfile stays committed. */
-function migrateGitignore(content: string): string {
-  const npmFirstBlock = `bun.lock
-bun.lockb
-pnpm-lock.yaml
-yarn.lock`
-  const bunFirstBlock = `package-lock.json
-pnpm-lock.yaml
-yarn.lock`
-  return content
-    .replace(
-      'This blueprint is npm-first, so package-lock.json is COMMITTED',
-      'This project is Bun-first, so bun.lock is COMMITTED',
-    )
-    .replace(npmFirstBlock, bunFirstBlock)
-}
-
-/** The pre-commit hook shells out to the package manager by name. */
-function migratePreCommitHook(content: string): string {
-  return content.replaceAll('npm run check:all', 'bun run check:all')
-}
-
-/**
- * Swap a GitHub Actions workflow from Node to Bun.
- *
- * The `setup-node` block carries a `node-version` line and a `cache: npm` line that `setup-bun`
- * does not accept, so both are removed rather than translated — passing an unknown input to an
- * action is a hard failure, not a warning.
- */
-function migrateWorkflow(content: string): string {
-  return content
-    .replace(/ {6}- uses: actions\/setup-node@v4\n {8}with:\n(?: {10}.*\n)+/g, `      - uses: ${BUN_SETUP_ACTION}\n`)
-    .replaceAll('run: npm ci', 'run: bun install --frozen-lockfile')
-    .replaceAll('npm run ', 'bun run ')
-    .replaceAll('node --import tsx ', 'bun ')
-    .replaceAll('`npm run check:all`', '`bun run check:all`')
-}
-
-const PLANNED_EDITS: readonly PlannedEdit[] = [
-  {
-    relativePath: 'package.json',
-    reason: 'scripts run through bun; tsx dropped; engines now bun',
-    transform: migratePackageJson,
-  },
-  {
-    relativePath: '.gitignore',
-    reason: 'commit bun.lock, ignore package-lock.json',
-    transform: migrateGitignore,
-  },
-  {
-    relativePath: '.githooks/pre-commit',
-    reason: 'hook invokes bun',
-    transform: migratePreCommitHook,
-  },
-  {
-    relativePath: '.github/workflows/ci.yml',
-    reason: 'setup-bun, bun install --frozen-lockfile',
-    transform: migrateWorkflow,
-  },
-  {
-    relativePath: '.github/workflows/coverage-main.yml',
-    reason: 'setup-bun, bun install, bun-run coverage script',
-    transform: migrateWorkflow,
-  },
-]
-
-const PLANNED_DELETIONS: readonly PlannedDeletion[] = [
-  {
-    relativePath: 'package-lock.json',
-    reason: 'replaced by bun.lock — never commit two lockfiles for one package.json',
-  },
-]
 
 /** True when the git tree has uncommitted changes, so a bad migration could not be reverted. */
 function hasUncommittedChanges(): boolean {
@@ -188,27 +69,28 @@ if (shouldWrite && !allowDirtyTree && hasUncommittedChanges()) {
 let changedFileCount = 0
 let missingFileCount = 0
 
-for (const edit of PLANNED_EDITS) {
-  const absolutePath = resolve(REPO_ROOT, edit.relativePath)
+for (const step of BUN_MIGRATION_STEPS) {
+  const absolutePath = resolve(REPO_ROOT, step.relativePath)
   if (!existsSync(absolutePath)) {
-    reportLine('?', YELLOW, `${edit.relativePath} ${DIM}— not found, skipped${RESET}`)
+    reportLine('?', YELLOW, `${step.relativePath} ${DIM}— not found, skipped${RESET}`)
     missingFileCount += 1
     continue
   }
   const originalContent = readFileSync(absolutePath, 'utf8')
-  const migratedContent = edit.transform(originalContent)
+  const migratedContent = step.transform(originalContent)
+  // The transforms are idempotent, so an unchanged result means this file is already on Bun.
   if (migratedContent === originalContent) {
-    reportLine('=', DIM, `${edit.relativePath} ${DIM}— already migrated${RESET}`)
+    reportLine('=', DIM, `${step.relativePath} ${DIM}— already migrated${RESET}`)
     continue
   }
   changedFileCount += 1
-  reportLine('~', GREEN, `${edit.relativePath} ${DIM}— ${edit.reason}${RESET}`)
+  reportLine('~', GREEN, `${step.relativePath} ${DIM}— ${step.reason}${RESET}`)
   if (shouldWrite) {
     writeFileSync(absolutePath, migratedContent)
   }
 }
 
-for (const deletion of PLANNED_DELETIONS) {
+for (const deletion of BUN_MIGRATION_DELETIONS) {
   const absolutePath = resolve(REPO_ROOT, deletion.relativePath)
   if (!existsSync(absolutePath)) {
     reportLine('=', DIM, `${deletion.relativePath} ${DIM}— already absent${RESET}`)
@@ -231,7 +113,7 @@ if (shouldWrite) {
       `  2. bun run check:all        ${DIM}# must be green${RESET}\n` +
       `  3. bun run coverage         ${DIM}# Vitest still produces COVERAGE.md${RESET}\n` +
       `  4. Commit bun.lock; confirm package-lock.json is gone.\n` +
-      `  5. Delete this script and scripts/scaffold-monorepo.ts — adoption tooling, not project code.\n`,
+      `  5. Delete this script — adoption tooling, not project code.\n`,
   )
 } else {
   process.stdout.write(`\n${DIM}Re-run with --write to apply.${RESET}\n`)

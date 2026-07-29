@@ -4,8 +4,14 @@
 and the config loader are all already workspace-safe. Two things genuinely change shape: **path
 aliases** and **tsconfig layout**.
 
-This is a plan, not a migration that has been performed. Where a claim is verified by a test in this
-repo, it says so; treat everything else as a design sketch to validate as you go.
+**The first step is scripted.** `scripts/create-project.ts --layout monorepo` generates a workspace
+containing one package, with the tsconfig split, the `@/*` alias, the `include` globs, and the
+coverage globs all rewritten to point through `packages/`. Both npm and Bun variants are verified to
+pass `check:all` on generation, with coverage measuring real files and the alias resolving.
+
+What a script cannot do is decide what belongs in a *second* package — that is a design judgement.
+So the sections below are the plan for everything after the scaffold. Where a claim is verified by a
+test in this repo, it says so; treat the rest as a design sketch to validate as you go.
 
 ## Target layout
 
