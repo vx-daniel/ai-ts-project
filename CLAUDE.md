@@ -6,7 +6,11 @@ first day correct — one gate, one set of conventions, and agent rules that are
 
 **If you are working in a project created from this blueprint, this file should have been replaced.**
 A CLAUDE.md that still describes the blueprint is a stale file — rewrite it to describe the actual
-project. See [README.md](README.md) § "Adopting the blueprint".
+project. See [README.md](README.md) § "Adopting the blueprint" for the full checklist.
+
+Two opt-in guides live in [`docs/`](docs/), both measured rather than inferred:
+[`bun.md`](docs/bun.md) (what works under Bun, and the one thing that doesn't) and
+[`monorepo.md`](docs/monorepo.md) (what carries over to workspaces, and what changes).
 
 ## What's here
 
@@ -59,7 +63,12 @@ Absent by design. Do not treat these as gaps to fill unless the project you are 
 - **Node 24+** (`engines` in package.json; CI pins 24), running `.ts` through **tsx**
   (`node --import tsx scripts/gate.ts`) — no build step. **Do not "simplify" this to bare `node`**:
   Node's own resolver does not read tsconfig `paths`, so the first aliased import throws
-  `ERR_MODULE_NOT_FOUND`. tsx is load-bearing, not ceremony.
+  `ERR_MODULE_NOT_FOUND`. tsx is load-bearing, not ceremony. (Under Bun both are unnecessary — Bun
+  runs `.ts` and resolves tsconfig `paths` natively. See [`docs/bun.md`](docs/bun.md).)
+- **The gate detects its package manager** (`npm_config_user_agent`, falling back to a `Bun` global
+  check, then npm) and prints which it chose. Do not hardcode `npm` back into
+  [`scripts/gate.ts`](scripts/gate.ts) — that broke `bun scripts/gate.ts` with
+  `Executable not found in $PATH: "npm"`.
 - **TypeScript 7** (native compiler), `strict: true`, typecheck-only.
 - **Path aliases**: `@/*` → `src/*`. `tsconfig.json`'s `paths` is the single source of truth — tsc
   reads it directly, Vitest via `resolve.tsconfigPaths`, runtime via tsx. Add an alias

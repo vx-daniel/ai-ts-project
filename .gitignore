@@ -1,5 +1,15 @@
 node_modules
 
+# Lockfiles. This blueprint is npm-first, so package-lock.json is COMMITTED and every other
+# manager's lockfile is ignored. Two committed lockfiles for one package.json is the failure this
+# prevents: they resolve independently and drift, and nobody notices until a version differs between
+# a teammate's install and CI. If you adopt Bun (docs/bun.md) or pnpm, invert this — commit that
+# manager's lockfile and ignore package-lock.json instead. Pick exactly one.
+bun.lock
+bun.lockb
+pnpm-lock.yaml
+yarn.lock
+
 # Build output. The blueprint is typecheck-only (tsconfig sets noEmit), so nothing lands here yet —
 # the entry is pre-declared for whatever emit strategy the project picks. See README.md.
 dist/
