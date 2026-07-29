@@ -117,6 +117,22 @@ describe('findConfigDirectory', () => {
     expect(found).toBe(CONFIG_DIRECTORY)
   })
 
+  // Load-bearing for the monorepo path (docs/monorepo.md): a package nested at packages/<name>/
+  // must find the ROOT config.defaults.toml with no per-package configuration. If this breaks, every
+  // workspace package needs its own copy of the config — which is the drift the single committed
+  // defaults file exists to prevent.
+  it('finds the root defaults file from inside a nested workspace package', () => {
+    const fileSystem = createFakeFileSystem({ [`${CONFIG_DIRECTORY}/${DEFAULTS_FILENAME}`]: '' })
+
+    const found = findConfigDirectory({
+      startDirectory: `${CONFIG_DIRECTORY}/packages/api/src/routes`,
+      fileSystem,
+      environment: {},
+    })
+
+    expect(found).toBe(CONFIG_DIRECTORY)
+  })
+
   it('prefers APP_CONFIG_DIR over the upward walk', () => {
     // The defaults file exists at the start directory, so a walk would succeed — proving the
     // override short-circuits rather than merely acting as a fallback.

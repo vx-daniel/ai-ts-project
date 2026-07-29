@@ -34,29 +34,70 @@ const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const RESET = '\x1b[0m'
 
-/** One child-process gate: a display name, a one-line description, and its argv. */
+/**
+ * The package managers this gate knows how to shell out to. Each runs a package.json script with
+ * `<manager> run <script>`, so the invocation shape is identical and only the binary differs.
+ */
+const KNOWN_PACKAGE_MANAGERS = ['npm', 'bun', 'pnpm', 'yarn'] as const
+type PackageManager = (typeof KNOWN_PACKAGE_MANAGERS)[number]
+
+const DEFAULT_PACKAGE_MANAGER: PackageManager = 'npm'
+
+/**
+ * Which package manager to shell out to for each gate.
+ *
+ * Hardcoding `npm` here was a real portability bug: `bun scripts/gate.ts` runs the TypeScript fine
+ * (Bun executes `.ts` natively) and then dies with `Executable not found in $PATH: "npm"` on a
+ * machine that has only Bun. Two signals, in order:
+ *
+ *   1. `npm_config_user_agent` — every major package manager sets it when running a script, and its
+ *      first token is the manager's name (`bun/1.3.14 …`, `npm/11.17.0 …`). This is authoritative
+ *      when the gate was reached via `<manager> run check:all`, which is the normal path.
+ *   2. The runtime itself — when the script is invoked DIRECTLY (`bun scripts/gate.ts`) no user
+ *      agent is set, but a `Bun` global means we are under Bun and should use it.
+ *
+ * Falls back to npm, which is correct for `node scripts/gate.ts` on a normal Node install.
+ */
+function detectPackageManager(): PackageManager {
+  const userAgent = process.env.npm_config_user_agent
+  if (userAgent !== undefined) {
+    const managerName = userAgent.split('/')[0]
+    const knownManager = KNOWN_PACKAGE_MANAGERS.find((candidate) => candidate === managerName)
+    if (knownManager !== undefined) {
+      return knownManager
+    }
+  }
+  // Reading the global this way (rather than declaring `Bun`) keeps the check dependency-free and
+  // avoids `any` — the repo bans it, and pulling in @types/bun for one truthiness test is worse.
+  const isBunRuntime = typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
+  return isBunRuntime ? 'bun' : DEFAULT_PACKAGE_MANAGER
+}
+
+const PACKAGE_MANAGER = detectPackageManager()
+
+/** One child-process gate: a display name, a one-line description, and the script it runs. */
 interface Gate {
   readonly name: string
   readonly describe: string
-  /** argv — `command[0]` is the binary, the rest are its arguments. */
-  readonly command: readonly string[]
+  /** The package.json script name — run as `<package manager> run <script>`. */
+  readonly script: string
 }
 
 const GATES: readonly Gate[] = [
   {
     name: 'biome',
     describe: 'lint + format + import-organize (check-only)',
-    command: ['npm', 'run', 'lint'],
+    script: 'lint',
   },
   {
     name: 'typecheck',
     describe: 'tsc --noEmit',
-    command: ['npm', 'run', 'typecheck'],
+    script: 'typecheck',
   },
   {
     name: 'test',
     describe: 'vitest run',
-    command: ['npm', 'run', 'test'],
+    script: 'test',
   },
 ]
 
@@ -67,14 +108,15 @@ const GATES: readonly Gate[] = [
  */
 function runGate(gate: Gate): number {
   process.stdout.write(`\n${BOLD}▶ ${gate.name}${RESET} ${DIM}— ${gate.describe}${RESET}\n`)
-  const [binary, ...args] = gate.command
-  const result = spawnSync(binary, args, { stdio: 'inherit' })
+  const result = spawnSync(PACKAGE_MANAGER, ['run', gate.script], { stdio: 'inherit' })
   if (result.error) {
     process.stderr.write(`${RED}gate "${gate.name}" failed to spawn: ${result.error.message}${RESET}\n`)
     return 1
   }
   return result.status ?? 1
 }
+
+process.stdout.write(`${DIM}gate: running via ${PACKAGE_MANAGER}${RESET}\n`)
 
 let failedGate: string | null = null
 for (const gate of GATES) {

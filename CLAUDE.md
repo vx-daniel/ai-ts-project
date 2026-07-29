@@ -6,7 +6,23 @@ first day correct — one gate, one set of conventions, and agent rules that are
 
 **If you are working in a project created from this blueprint, this file should have been replaced.**
 A CLAUDE.md that still describes the blueprint is a stale file — rewrite it to describe the actual
-project. See [README.md](README.md) § "Adopting the blueprint".
+project. See [README.md](README.md) § "Adopting the blueprint" for the full checklist.
+
+**New projects are GENERATED, not copied**:
+`node --import tsx scripts/create-project.ts <target> [--package-manager npm|bun] [--layout single|monorepo]`.
+It renames the package, writes project-shaped docs, applies the chosen package manager and layout,
+and omits its own tooling from the output. All four combinations are verified to pass `check:all` on
+generation. If you are asked to "set up a new project from the blueprint", run that — do not
+hand-copy the tree.
+
+Two opt-in guides live in [`docs/`](docs/), both measured rather than inferred:
+[`bun.md`](docs/bun.md) (what works under Bun, and the one thing that doesn't) and
+[`monorepo.md`](docs/monorepo.md) (what carries over to workspaces, and what changes).
+
+**Adoption tooling — `scripts/create-project.ts`, `scripts/migrate-to-bun.ts`, `scripts/lib/` — is
+blueprint-only.** It is excluded from generated projects and must not be treated as project code.
+The Bun transforms live in `scripts/lib/bun-migration.ts` and are shared by the generator and the
+migrator so the two cannot drift.
 
 ## What's here
 
@@ -59,7 +75,12 @@ Absent by design. Do not treat these as gaps to fill unless the project you are 
 - **Node 24+** (`engines` in package.json; CI pins 24), running `.ts` through **tsx**
   (`node --import tsx scripts/gate.ts`) — no build step. **Do not "simplify" this to bare `node`**:
   Node's own resolver does not read tsconfig `paths`, so the first aliased import throws
-  `ERR_MODULE_NOT_FOUND`. tsx is load-bearing, not ceremony.
+  `ERR_MODULE_NOT_FOUND`. tsx is load-bearing, not ceremony. (Under Bun both are unnecessary — Bun
+  runs `.ts` and resolves tsconfig `paths` natively. See [`docs/bun.md`](docs/bun.md).)
+- **The gate detects its package manager** (`npm_config_user_agent`, falling back to a `Bun` global
+  check, then npm) and prints which it chose. Do not hardcode `npm` back into
+  [`scripts/gate.ts`](scripts/gate.ts) — that broke `bun scripts/gate.ts` with
+  `Executable not found in $PATH: "npm"`.
 - **TypeScript 7** (native compiler), `strict: true`, typecheck-only.
 - **Path aliases**: `@/*` → `src/*`. `tsconfig.json`'s `paths` is the single source of truth — tsc
   reads it directly, Vitest via `resolve.tsconfigPaths`, runtime via tsx. Add an alias
@@ -113,3 +134,8 @@ The rules in [`.claude/rules/`](.claude/rules/) are the detail; the short versio
 - **Zod at trust boundaries**, with the type *inferred* from the schema — never hand-written beside it.
 - **No magic values**, no abandonment markers (`TODO`/`FIXME`/`HACK`), no test weakening, no type
   suppression in tests.
+- **`*.io.ts` = imperative shell.** Side-effecting boundary glue (process bootstrap, request wiring,
+  database/console/fs writes) with **no branching and no computation** — every decision pushed into
+  a pure, covered module. Files matching it are excluded from the coverage metric
+  ([`vitest.config.ts`](vitest.config.ts)). This is a convention, not a loophole: do not rename a
+  file to `.io.ts` to dodge the floor. If it branches, it belongs in a tested function.
